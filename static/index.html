@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>freelaunch</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1>free<span>launch</span></h1>
+    <div style="font-size:12px;color:var(--text-mute)">organic launch tracker</div>
+  </header>
+  <main>
+    <h2>Projects</h2>
+    <div id="projects" class="project-grid"></div>
+  </main>
+  <script>
+    const CONVERSION_LABEL = {
+      'newton-th': 'trials today',
+      'newton-en': 'trials today',
+      'whisperer': 'first chats today',
+    };
+    async function load() {
+      const res = await fetch('/api/projects');
+      const projects = await res.json();
+      const root = document.getElementById('projects');
+      root.innerHTML = projects.map(p => `
+        <a class="project-card" href="/p/${p.slug}" style="border-top: 3px solid ${p.color}">
+          <div class="name">${p.name}</div>
+          <div class="desc">${p.description || ''}</div>
+          <div class="stats">
+            <div class="stat">
+              <div class="num">${p.open_today ?? 0}</div>
+              <div class="label">open tasks</div>
+            </div>
+            <div class="stat">
+              <div class="num">${p.visitors_today ?? 0}</div>
+              <div class="label">visits today</div>
+            </div>
+            <div class="stat">
+              <div class="num" style="color:${p.color}">${p.trials_today ?? 0}</div>
+              <div class="label">${CONVERSION_LABEL[p.slug] || 'conversions today'}</div>
+            </div>
+          </div>
+        </a>
+      `).join('');
+    }
+    load();
+  </script>
+</body>
+</html>

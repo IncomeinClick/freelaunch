@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>freelaunch</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1>free<span>launch</span></h1>
+    <a href="/" style="font-size:13px;color:var(--text-mute)">← all projects</a>
+  </header>
+  <main>
+    <div class="proj-header">
+      <div>
+        <span class="back-link" id="proj-slug"></span>
+        <h2 id="proj-name">…</h2>
+      </div>
+      <div class="week-nav">
+        <button onclick="shiftWeek(-1)">← prev</button>
+        <button onclick="shiftWeek(0)">today</button>
+        <button onclick="shiftWeek(1)">next →</button>
+        <span id="week-range" style="font-size:13px;color:var(--text-dim);margin-left:8px"></span>
+      </div>
+    </div>
+
+    <div class="metrics-row" id="metrics-row"></div>
+    <div class="week-grid" id="week-grid"></div>
+  </main>
+
+  <div class="modal-bg" id="modal-bg" onclick="closeModalIfBg(event)">
+    <div class="modal">
+      <h3 id="modal-title">Add task</h3>
+      <div class="field">
+        <label>Title</label>
+        <input id="t-title" type="text" autocomplete="off">
+      </div>
+      <div class="field">
+        <label>Description</label>
+        <textarea id="t-desc" placeholder="links, template, notes…"></textarea>
+      </div>
+      <div class="field">
+        <label>Channel</label>
+        <select id="t-channel">
+          <option value="fb">FB Group / Page Post</option>
+          <option value="pantip">Pantip</option>
+          <option value="reddit">Reddit</option>
+          <option value="ih">Indie Hackers</option>
+          <option value="linkedin">LinkedIn</option>
+          <option value="platform">Directory / Platform Listing</option>
+          <option value="x">X (Twitter)</option>
+          <option value="yt">YouTube</option>
+          <option value="blog">Blog / dev.to / Hashnode</option>
+          <option value="pr">PR / Event / Sponsor</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Date</label>
+        <input id="t-date" type="date">
+      </div>
+      <div class="modal-actions">
+        <button class="danger" id="t-delete" onclick="deleteTask()" style="display:none">Delete</button>
+        <div class="group" style="margin-left:auto">
+          <button onclick="closeModal()">Cancel</button>
+          <button class="primary" onclick="saveTask()">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const slug = location.pathname.split('/').pop();
+    let project = null;
+    let weekStart = monday(new Date());
+    let editingId = null;
+
+    function monday(d) {
+      const x = new Date(d);
+      const dow = (x.getDay() + 6) % 7;  // 0=Mon
+      x.setDate(x.getDate() - dow);
+      x.setHours(0,0,0,0);
+      return x;
+    }
+
+    function ymd(d) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth()+1).padStart(2,'0');
+      const day = String(d.getDate()).padStart(2,'0');
+      return `${y}-${m}-${day}`;
+    }
+
+    function shiftWeek(delta) {
+      if (delta === 0) weekStart = monday(new Date());
+      else weekStart.setDate(weekStart.getDate() + delta * 7);
+      render();
+    }
+
+    function channelLabel(c) {
+      return ({fb:'FB', pantip:'Pantip', reddit:'Reddit', ih:'IH', linkedin:'LinkedIn', platform:'Directory', x:'X', yt:'YT', blog:'Blog', pr:'PR', other:'Other'})[c] || c;
+    }
+
+    async function load() {
+      const p = await fetch(`/api/projects/${slug}`).then(r => r.json());
+      project = p;
+      document.getElementById('proj-name').textContent = p.name;
+      document.getElementById('proj-slug').textContent = p.description || '';
+      render();
+    }
+
+    async function render() {
+      const end = new Date(weekStart);
+      end.setDate(end.getDate() + 6);
+      document.getElementById('week-range').textContent = `${ymd(weekStart)} → ${ymd(end)}`;
+
+      const [tasks, metrics] = await Promise.all([
+        fetch(`/api/projects/${slug}/tasks?start=${ymd(weekStart)}&end=${ymd(end)}`).then(r => r.json()),
+        fetch(`/api/projects/${slug}/metrics?days=14`).then(r => r.json()),
+      ]);
+
+      renderMetrics(metrics);
+      renderWeek(tasks, metrics);
+    }
+
+    const PROJECT_METRICS = {
+      'newton-th':  {primary: 'Trials',      secondary: 'Paid', conv: 'visit → trial', day_label: 'trials'},
+      'newton-en':  {primary: 'Trials',      secondary: 'Paid', conv: 'visit → trial', day_label: 'trials'},
+      'whisperer':  {primary: 'First chats', secondary: null,   conv: 'visit → first chat', day_label: 'chats'},
+    };
+
+    function renderMetrics(metrics) {
+      const today = ymd(new Date());
+      const today_m = metrics.find(m => m.metric_date === today) || {visitors:0, trial_signups:0, paid_signups:0};
+
+      const last7 = metrics.slice(-7);
+      const sum = last7.reduce((acc, m) => ({
+        v: acc.v + (m.visitors || 0),
+        t: acc.t + (m.trial_signups || 0),
+        p: acc.p + (m.paid_signups || 0),
+      }), {v:0, t:0, p:0});
+
+      const conv = sum.v ? ((sum.t / sum.v) * 100).toFixed(1) : '0.0';
+      const labels = PROJECT_METRICS[slug] || {primary: 'Conversions', secondary: null, conv: 'visit → conv', day_label: 'conv'};
+
+      const cards = [
+        {label: 'Visitors today', value: today_m.visitors, sub: `${sum.v} last 7d`},
+        {label: `${labels.primary} today`, value: today_m.trial_signups, sub: `${sum.t} last 7d`, color: project.color},
+      ];
+      if (labels.secondary) {
+        cards.push({label: `${labels.secondary} today`, value: today_m.paid_signups, sub: `${sum.p} last 7d`});
+      }
+      cards.push({label: 'Conv 7d', value: `${conv}%`, sub: labels.conv});
+
+      document.getElementById('metrics-row').innerHTML = cards.map(c => `
+        <div class="metric-card">
+          <div class="label">${c.label}</div>
+          <div class="value" ${c.color ? `style="color:${c.color}"` : ''}>${c.value ?? 0}</div>
+          <div class="sub">${c.sub}</div>
+        </div>
+      `).join('');
+    }
+
+    function renderWeek(tasks, metrics) {
+      const dows = ['MON','TUE','WED','THU','FRI','SAT','SUN'];
+      const todayStr = ymd(new Date());
+      let html = '';
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(weekStart);
+        d.setDate(d.getDate() + i);
+        const dStr = ymd(d);
+        const dayTasks = tasks.filter(t => t.scheduled_date === dStr);
+        const m = metrics.find(x => x.metric_date === dStr);
+        const isToday = dStr === todayStr;
+        html += `
+          <div class="day-col ${isToday ? 'today' : ''}">
+            <div class="day-head">
+              <div>
+                <div class="dow">${dows[i]}</div>
+                <div class="dom">${d.getDate()}/${d.getMonth()+1}</div>
+              </div>
+              <button class="add-btn" onclick="openAdd('${dStr}')">+</button>
+            </div>
+            <div class="day-metrics">
+              <span><span class="mv">${m?.visitors ?? '–'}</span> visits</span>
+              <span><span class="mc">${m?.trial_signups ?? '–'}</span> ${(PROJECT_METRICS[slug]?.day_label) || 'conv'}</span>
+            </div>
+            <div class="day-body">
+              ${dayTasks.length ? dayTasks.map(renderTask).join('') : '<div class="empty">no tasks</div>'}
+            </div>
+          </div>
+        `;
+      }
+      document.getElementById('week-grid').innerHTML = html;
+    }
+
+    function renderTask(t) {
+      return `
+        <div class="task channel-${t.channel} ${t.status==='done'?'done':''}" onclick="openEdit(${t.id})">
+          <div class="check" onclick="toggleStatus(event, ${t.id}, '${t.status}')"></div>
+          <div class="title">${escape(t.title)}</div>
+          <span class="channel">${channelLabel(t.channel)}</span>
+        </div>
+      `;
+    }
+
+    function escape(s) {
+      return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]);
+    }
+
+    async function toggleStatus(e, id, current) {
+      e.stopPropagation();
+      const next = current === 'done' ? 'todo' : 'done';
+      await fetch(`/api/tasks/${id}`, {
+        method: 'PATCH',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({status: next}),
+      });
+      render();
+    }
+
+    function openAdd(dateStr) {
+      editingId = null;
+      document.getElementById('modal-title').textContent = 'Add task';
+      document.getElementById('t-title').value = '';
+      document.getElementById('t-desc').value = '';
+      document.getElementById('t-channel').value = 'fb';
+      document.getElementById('t-date').value = dateStr;
+      document.getElementById('t-delete').style.display = 'none';
+      document.getElementById('modal-bg').classList.add('open');
+      setTimeout(() => document.getElementById('t-title').focus(), 50);
+    }
+
+    async function openEdit(id) {
+      const t = await fetch(`/api/projects/${slug}/tasks`).then(r => r.json()).then(arr => arr.find(x => x.id === id));
+      if (!t) return;
+      editingId = id;
+      document.getElementById('modal-title').textContent = 'Edit task';
+      document.getElementById('t-title').value = t.title;
+      document.getElementById('t-desc').value = t.description || '';
+      document.getElementById('t-channel').value = t.channel;
+      document.getElementById('t-date').value = t.scheduled_date;
+      document.getElementById('t-delete').style.display = '';
+      document.getElementById('modal-bg').classList.add('open');
+    }
+
+    function closeModal() {
+      document.getElementById('modal-bg').classList.remove('open');
+    }
+
+    function closeModalIfBg(e) {
+      if (e.target.id === 'modal-bg') closeModal();
+    }
+
+    async function saveTask() {
+      const body = {
+        title: document.getElementById('t-title').value.trim(),
+        description: document.getElementById('t-desc').value,
+        channel: document.getElementById('t-channel').value,
+        scheduled_date: document.getElementById('t-date').value,
+      };
+      if (!body.title || !body.scheduled_date) return;
+      if (editingId) {
+        await fetch(`/api/tasks/${editingId}`, {
+          method: 'PATCH',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(body),
+        });
+      } else {
+        await fetch(`/api/projects/${slug}/tasks`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(body),
+        });
+      }
+      closeModal();
+      render();
+    }
+
+    async function deleteTask() {
+      if (!editingId) return;
+      if (!confirm('ลบ task นี้?')) return;
+      await fetch(`/api/tasks/${editingId}`, {method: 'DELETE'});
+      closeModal();
+      render();
+    }
+
+    load();
+  </script>
+  <script>
+    // mount /static for the FastAPI static files (CSS already linked)
+  </script>
+</body>
+</html>
