@@ -26,19 +26,20 @@ PROJECTS = {
         "source": "newton_db",
         "newton_db": "/opt/newton/newton.db",
         "ga_property": "536898203",
-        "hostname": "newton.incomeinclick.in.th",
+        "hostnames": ["newton.incomeinclick.in.th"],
     },
     "newton-en": {
         "source": "newton_db",
         "newton_db": "/opt/newton/newton-en.db",
         "ga_property": "536868580",
-        "hostname": "newton.incomeinclick.com",
+        # moved to hirenewton.com on 2026-08-17; old host kept so history stays readable
+        "hostnames": ["hirenewton.com", "www.hirenewton.com", "newton.incomeinclick.com"],
     },
     "whisperer": {
         "source": "ga_event",
         "event_name": "first_chat",
         "ga_property": "536162879",
-        "hostname": "whisperer.chat",
+        "hostnames": ["whisperer.chat"],
     },
 }
 
@@ -68,13 +69,13 @@ def ga_run_report(property_id: str, body: dict, access_token: str) -> dict:
         return json.loads(resp.read())
 
 
-def collect_traffic(property_id: str, hostname: str, since: date, until: date, access_token: str) -> dict:
+def collect_traffic(property_id: str, hostnames: list, since: date, until: date, access_token: str) -> dict:
     """Return {date_str: {visitors, pageviews}} from GA4 (bots filtered)."""
     body = {
         "dateRanges": [{"startDate": since.isoformat(), "endDate": until.isoformat()}],
         "dimensions": [{"name": "date"}],
         "metrics": [{"name": "totalUsers"}, {"name": "screenPageViews"}],
-        "dimensionFilter": {"filter": {"fieldName": "hostName", "stringFilter": {"value": hostname}}},
+        "dimensionFilter": {"filter": {"fieldName": "hostName", "inListFilter": {"values": hostnames}}},
     }
     out: dict[str, dict[str, int]] = {}
     try:
@@ -137,7 +138,7 @@ def collect_ga_event(property_id: str, event_name: str, since: date, until: date
 
 def upsert(project_slug: str, since: date, until: date, access_token: str) -> int:
     conf = PROJECTS[project_slug]
-    traffic = collect_traffic(conf["ga_property"], conf["hostname"], since, until, access_token)
+    traffic = collect_traffic(conf["ga_property"], conf["hostnames"], since, until, access_token)
     if conf["source"] == "newton_db":
         signups = collect_signups(conf["newton_db"], since, until)
     elif conf["source"] == "ga_event":
