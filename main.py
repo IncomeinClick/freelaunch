@@ -198,7 +198,7 @@ def init_db():
         existing = conn.execute("SELECT slug FROM projects").fetchall()
         slugs = {r["slug"] for r in existing}
         seed = [
-            ("newton-th", "Newton TH", "Newton ภาษาไทย — organic launch", "#22c55e"),
+            ("newton-th", "Newton TH", "Newton Thai: organic launch", "#22c55e"),
             ("newton-en", "Newton EN", "Newton English — SaaS launch from zero", "#3b82f6"),
         ]
         for slug, name, desc, color in seed:

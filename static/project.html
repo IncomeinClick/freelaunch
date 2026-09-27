@@ -279,7 +279,7 @@
 
     async function deleteTask() {
       if (!editingId) return;
-      if (!confirm('ลบ task นี้?')) return;
+      if (!confirm('Delete this task?')) return;
       await fetch(`/api/tasks/${editingId}`, {method: 'DELETE'});
       closeModal();
       render();
